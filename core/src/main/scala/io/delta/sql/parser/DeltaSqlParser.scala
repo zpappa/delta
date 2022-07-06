@@ -39,11 +39,8 @@
 package io.delta.sql.parser
 
 import java.util.Locale
-
 import scala.collection.JavaConverters._
-
 import org.apache.spark.sql.catalyst.TimeTravel
-
 import org.apache.spark.sql.delta._
 import org.apache.spark.sql.delta.commands._
 import io.delta.sql.parser.DeltaSqlBaseParser._
@@ -52,13 +49,13 @@ import org.antlr.v4.runtime._
 import org.antlr.v4.runtime.atn.PredictionMode
 import org.antlr.v4.runtime.misc.{Interval, ParseCancellationException}
 import org.antlr.v4.runtime.tree._
-
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.expressions.{Expression, Literal}
 import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.catalyst.parser.{ParseErrorListener, ParseException, ParserInterface}
 import org.apache.spark.sql.catalyst.parser.ParserUtils.{string, withOrigin}
+import org.apache.spark.sql.catalyst.parser.SqlBaseParser.ShowCreateTableContext
 import org.apache.spark.sql.catalyst.plans.logical.{AlterTableAddConstraint, AlterTableDropConstraint, LogicalPlan, RestoreTableStatement}
 import org.apache.spark.sql.catalyst.trees.Origin
 import org.apache.spark.sql.types._
@@ -250,6 +247,10 @@ class DeltaSqlAstBuilder extends DeltaSqlBaseBaseVisitor[AnyRef] {
       case Seq(db, tbl) => TableIdentifier(tbl.getText, Some(db.getText))
       case _ => throw new ParseException(s"Illegal table name ${ctx.getText}", ctx)
     }
+  }
+
+  override def visitShowCreateTable(ctx: DeltaSqlBaseParser.ShowCreateTableContext): LogicalPlan = withOrigin(ctx) {
+    ShowCreateTableCommand(Option(ctx.table).map(visitTableIdentifier))
   }
 
   override def visitPassThrough(ctx: PassThroughContext): LogicalPlan = null

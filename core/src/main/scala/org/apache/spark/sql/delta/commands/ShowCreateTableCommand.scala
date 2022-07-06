@@ -19,14 +19,12 @@ import org.apache.hadoop.fs.Path
 
 import scala.collection.JavaConverters._
 import org.apache.spark.sql.catalyst.TableIdentifier
-import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.util.CharVarcharUtils
 import org.apache.spark.sql.connector.catalog.{CatalogV2Util, Table, TableCatalog}
-import org.apache.spark.sql.catalyst.util.{CharVarcharUtils, escapeSingleQuotedString}
-import org.apache.spark.sql.delta.catalog.{BucketTransform, DeltaTableV2}
-import org.apache.spark.sql.delta.metering.DeltaLogging
+import org.apache.spark.sql.catalyst.util.escapeSingleQuotedString
+import org.apache.spark.sql.delta.catalog.DeltaTableV2
 import org.apache.spark.sql.execution.command.LeafRunnableCommand
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.unsafe.types.UTF8String
@@ -96,39 +94,20 @@ case class ShowCreateTableCommand(
   private def showTablePartitioning(table: Table, builder: StringBuilder): Unit = {
     if (!table.partitioning.isEmpty) {
       val transforms = new ArrayBuffer[String]
-      var bucketSpec = Option.empty[BucketSpec]
-      table.partitioning.map {
-        case BucketTransform(numBuckets, col, sortCol) =>
-          if (sortCol.isEmpty) {
-            bucketSpec = Some(BucketSpec(numBuckets, col.map(_.fieldNames.mkString(".")), Nil))
-          } else {
-            bucketSpec = Some(BucketSpec(numBuckets, col.map(_.fieldNames.mkString(".")),
-              sortCol.map(_.fieldNames.mkString("."))))
-          }
-        case t =>
+      table.partitioning.map {t =>
           transforms += t.describe()
       }
       if (transforms.nonEmpty) {
         builder ++= s"PARTITIONED BY ${transforms.mkString("(", ", ", ")")}\n"
       }
-
-      // compatible with v1
-      bucketSpec.map { bucket =>
-        assert(bucket.bucketColumnNames.nonEmpty)
-        builder ++= s"CLUSTERED BY ${bucket.bucketColumnNames.mkString("(", ", ", ")")}\n"
-        if (bucket.sortColumnNames.nonEmpty) {
-          builder ++= s"SORTED BY ${bucket.sortColumnNames.mkString("(", ", ", ")")}\n"
-        }
-        builder ++= s"INTO ${bucket.numBuckets} BUCKETS\n"
-      }
     }
   }
 
   private def showTableLocation(table: Table, builder: StringBuilder): Unit = {
-    val isExternalOption = Option(table.properties().get(TableCatalog.PROP_EXTERNAL))
+    val isExternalOption = Option(table.properties().get(DeltaTableV2.PROP_TYPE))
     // Only generate LOCATION clause if it's not managed.
-    if (isExternalOption.forall(_.equalsIgnoreCase("true"))) {
-      Option(table.properties.get(TableCatalog.PROP_LOCATION))
+    if (isExternalOption.forall(_.equalsIgnoreCase("EXTERNAL"))) {
+      Option(table.properties.get(DeltaTableV2.PROP_LOCATION))
         .map("LOCATION '" + escapeSingleQuotedString(_) + "'\n")
         .foreach(builder.append)
     }
